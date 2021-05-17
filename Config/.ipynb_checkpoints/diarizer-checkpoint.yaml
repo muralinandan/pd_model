@@ -1,0 +1,9 @@
+link_db_path: JSONDatabase/link_db.json
+tagged_speakers_path: JSONDatabase/tagged_speakers.json
+max_speakers_path: JSONDatabase/max_speakers.json
+gold_speakers_path: JSONDatabase/gold_speakers.json
+bucket_name: celeberty-interviews
+credentials: JSONDatabase/credentials.json
+max_clusters: 10
+p_percentile: 0.95
+g_blursigma: 0.5

@@ -1,0 +1,8 @@
+person_names:
+    - Micheal J Fox
+num_sr: 10
+google_api_key: AIzaSyBh5hVugls2WcWDhdUPIoZ0aC_cRaTWS28
+google_cse_id: 670fdee4da45f9362
+link_db_path: JSONDatabase/
+dest_file: link_db.json
+cluster_info_path: JSONDatabase/cluster_info.json

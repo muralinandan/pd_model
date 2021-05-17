@@ -1,0 +1,6 @@
+link_db_path: JSONDatabase/link_db.json
+mp4_dir: Data/mp4/
+wav_dir: Data/wav/
+gold_dir: Data/gold_wav
+max_speakers_path: JSONDatabase/max_speakers.json
+gold_speakers_path: JSONDatabase/gold_speakers.json

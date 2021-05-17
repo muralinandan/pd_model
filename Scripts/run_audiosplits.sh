@@ -1,0 +1,1 @@
+python makeAudioSplits.py --config Config/info.yaml;

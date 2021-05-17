@@ -1,0 +1,1 @@
+python extractFeatures.py --config Config/info.yaml;

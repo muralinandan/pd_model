@@ -1,0 +1,6 @@
+link_db_path: JSONDatabase/link_db.json
+mp4_dir: Data/mp4/
+wav_dir: Data/wav/
+dest_file: link_db.json
+bucket_name: celeberty-interviews
+credentials: JSONDatabase/credentials.json

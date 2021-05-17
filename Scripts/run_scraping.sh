@@ -1,0 +1,1 @@
+python scrapper.py --config Config/scrapper.yaml;
