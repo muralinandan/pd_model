@@ -1,0 +1,4 @@
+filename: 'data.csv'
+viz_dir: Visualizations/
+emb_dim: 16
+progression: False

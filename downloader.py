@@ -39,7 +39,9 @@ class Downloader:
             best_stream = yt.streams.get_audio_only()
         except Exception as e:
             print ("Issue with: {}".format(video_link))
+            print (e)
             return video
+        
         if best_stream != None:
             video['status'] = Status.MARKED_FOR_DOWNLOAD
             try:

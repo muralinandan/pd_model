@@ -2,14 +2,28 @@ import coloredlogs, logging, warnings
 import sys, re, os, subprocess, time
 import yaml
 import json
+import numpy as np
+import pandas as pd
+import datetime
 
 from pathlib import Path
+from tqdm import tqdm
 from pydub import AudioSegment
 from pydub.utils import make_chunks
 from pprint import pprint
+from sklearn.svm import LinearSVC
+from sklearn.metrics import accuracy_score, plot_confusion_matrix
+
+import surfboard
+from surfboard.sound import Waveform
+from surfboard.feature_extraction_multiprocessing import extract_features_from_paths as extractFeaturesMP
+from surfboard.feature_extraction import extract_features
+
+import parselmouth
+from parselmouth.praat import call
 
 from argparse import ArgumentParser
-from utils import Status, as_enum, EnumEncoder, load_config, get_video_info, garbage_collector
+from utils import Status, as_enum, EnumEncoder, load_config, get_video_info, garbage_collector, getComponentsList, getStatusForDP
 
 warnings.filterwarnings("ignore", category=UserWarning)
 logger = logging.getLogger('FEATURE_EXTRACTION')
@@ -22,109 +36,57 @@ def make_link_db(updated_dict,config):
     with open(os.path.join(config['base_path'],config['link_db_path']),'w+') as fp:
         fp.write(json.dumps(updated_dict, cls = EnumEncoder))
 
-def window_model(n_bands, n_frames, n_classes, hidden=32):
-    from keras.layers import Input, Dense, Flatten, Conv2D, MaxPooling2D
-
-    out_units = 1 if n_classes == 2 else n_classes
-    out_activation = 'sigmoid' if n_classes == 2 else 'softmax'
-
-    shape = (n_bands, n_frames, 1)
-
-    # Basic CNN model
-    # An MLP could also be used, but may need to reshape on input and output
-    model = keras.Sequential([
-       Conv2D(16, (3,3), input_shape=shape),
-       MaxPooling2D((2,3)),
-       Conv2D(16, (3,3)),
-       MaxPooling2D((2,2)),
-       Flatten(),
-       Dense(hidden, activation='relu'),
-       Dense(hidden, activation='relu'),
-       Dense(out_units, activation=out_activation),
-    ])
-    return model
-
-def song_model(n_bands, n_frames, n_windows, n_classes=3):
-    from keras.layers import Input, TimeDistributed, GlobalAveragePooling1D
-
-    # Create the frame-wise model, will be reused across all frames
-    base = window_model(n_bands, n_frames, n_classes)
-    # GlobalAveragePooling1D expects a 'channel' dimension at end
-    shape = (n_windows, n_bands, n_frames, 1)
-
-    print('Frame model')
-    base.summary()
-
-    model = keras.Sequential([
-        TimeDistributed(base, input_shape=shape),
-        GlobalAveragePooling1D(),
-    ])
-
-    print('Song model')
-    model.summary()
-
-    model.compile(loss='categorical_crossentropy', optimizer='SGD', metrics=['acc'])
-    return model
-
-def main():
-
-    
-    
-    
-    
-    # Settings for our model
-    n_bands = 13 # MFCCs
-    sample_rate = 22050
-    hop_length = 512
-    window_length = 5.0
-    song_length_max = 1.0*60
-    n_frames = math.ceil(window_length / (hop_length/sample_rate))
-    n_windows = math.floor(song_length_max / (window_length/2))-1
-
-#     model = song_model(n_bands, n_frames, n_windows)
-
-#     Generate some example data
-    ex =  librosa.util.example_audio_file()
-    print (type(ex))
-    examples = 8
-    numpy.random.seed(2)
-    songs = pandas.DataFrame({
-        'path': [ex] * examples,
-        'genre': numpy.random.choice([ 'rock', 'metal', 'blues' ], size=examples),
-    })
-    print (songs.path)
-#     assert len(songs.genre.unique() == 3) 
-
-#     print('Song data')
-#     print(songs)
-
-#     def get_features(path):
-#         f = extract_features(path, sample_rate, n_bands,
-#                     hop_length, n_frames, window_length, song_length_max)
-#         return f
-
-#     from sklearn.preprocessing import LabelBinarizer
-
-#     binarizer = LabelBinarizer()
-#     y = binarizer.fit_transform(songs.genre.values)
-#     print('y', y.shape, y)
-
-#     features = numpy.stack([ get_features(p) for p in songs.path ])
-#     print('features', features.shape)
-
-#     model.fit(features, y) 
-
 def preprocessFiles(path):
     outputFiles = {}
     allFiles = [f for f in os.listdir(config['gold_dir']) if os.path.isfile(os.path.join(config['gold_dir'], f))]
     for file in allFiles:
         titleName = file.split('!')[0]
         if titleName not in outputFiles.keys():
-            outputFiles[titleName] = [file]
+            outputFiles[titleName] = [os.path.join(config['gold_dir'], file)]
         else:
-            outputFiles[titleName].append(file)
+            outputFiles[titleName].append(os.path.join(config['gold_dir'], file))
     return outputFiles
+
+def extractPitch(id,f0Min,f0Max,unit):
+    sound = parselmouth.Sound(id)
+    pointProcess = call(sound, "To PointProcess (periodic, cc)", f0Min, f0Max)
+    localJitter = call(pointProcess, "Get jitter (local)", 0, 0, 0.0001, 0.02, 1.3)
+    localabsoluteJitter = call(pointProcess, "Get jitter (local, absolute)", 0, 0, 0.0001, 0.02, 1.3)
+    rapJitter = call(pointProcess, "Get jitter (rap)", 0, 0, 0.0001, 0.02, 1.3)
+    ppq5Jitter = call(pointProcess, "Get jitter (ppq5)", 0, 0, 0.0001, 0.02, 1.3)
+    ddpJitter = call(pointProcess, "Get jitter (ddp)", 0, 0, 0.0001, 0.02, 1.3)
+    localShimmer =  call([sound, pointProcess], "Get shimmer (local)", 0, 0, 0.0001, 0.02, 1.3, 1.6)
+    localdbShimmer = call([sound, pointProcess], "Get shimmer (local_dB)", 0, 0, 0.0001, 0.02, 1.3, 1.6)
+    apq3Shimmer = call([sound, pointProcess], "Get shimmer (apq3)", 0, 0, 0.0001, 0.02, 1.3, 1.6)
+    apq5Shimmer = call([sound, pointProcess], "Get shimmer (apq5)", 0, 0, 0.0001, 0.02, 1.3, 1.6)
+    apq11Shimmer =  call([sound, pointProcess], "Get shimmer (apq11)", 0, 0, 0.0001, 0.02, 1.3, 1.6)
+    ddaShimmer = call([sound, pointProcess], "Get shimmer (dda)", 0, 0, 0.0001, 0.02, 1.3, 1.6)
+    jitters = {'localJitter':localJitter,'localabsoluteJitter':localabsoluteJitter,'rapJitter':rapJitter,'ppq5Jitter':ppq5Jitter,'ddpJitter':ddpJitter}
+    shimmers = {'localShimmer':localShimmer,'localdbShimmer':localdbShimmer,'apq3Shimmer':apq3Shimmer,'apq5Shimmer':apq5Shimmer,'apq11Shimmer':apq11Shimmer,'ddaShimmer':ddaShimmer}
+    return jitters , shimmers
     
+def extractFeatures(paths,data,index,title,currdate,dob_year,diag_year):
+    if len(paths)==0:
+        return data
+    records = []
+    print ("Extracting features for {}".format(title))
+    curr_year = int(currdate.split('-')[0])
+    time = curr_year*52 + int(datetime.datetime.strftime(datetime.datetime.strptime(currdate, "%Y-%m-%d"),'%U'))
+    person_age = curr_year - dob_year
+    status = getStatusForDP(curr_year, diag_year)
+    for path in tqdm(paths,total=len(paths)):
+        wave = Waveform(path, sample_rate=44100)
+        sound = parselmouth.Sound(path)
+        jitters, shimmers = extractPitch(sound, 75, 500, "Hertz")
+        ppe = wave.ppe()
+        hnr = wave.hnr()
+        dfa = wave.dfa()
+        nhr = 1/(hnr+sys.float_info.epsilon)
+        records.append([index,jitters['localJitter'],jitters['localabsoluteJitter'],jitters['rapJitter'],jitters['ppq5Jitter'],jitters['ddpJitter'],shimmers['localShimmer'],shimmers['localdbShimmer'],shimmers['apq3Shimmer'],shimmers['apq5Shimmer'],shimmers['apq11Shimmer'],shimmers['ddaShimmer'],nhr,hnr,dfa,ppe,status,person_age,time])
+    data.extend(records)
+    
+    return data
+
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--config', dest='config_file', type=str, help='Configuration file', required=True)
@@ -135,14 +97,28 @@ if __name__ == '__main__':
     
     with open(os.path.join(config['base_path'],config['link_db_path'])) as fp:
         link_db = json.load(fp, object_hook=as_enum)
-        
+    with open(os.path.join(config['base_path'],config['dob_db_path'])) as fp:
+        dob_db = json.load(fp)
+    with open(os.path.join(config['base_path'],config['diagnosys_db_path'])) as fp:
+        diag_db = json.load(fp)
+   
     all_wav_files = preprocessFiles(config['gold_dir'])
-    for person,data in link_db.items():
-        for index, video in enumerate(data):           
+    features = ['Subject#','Jitter(%)','Jitter(Abs)','Jitter:RAP','Jitter:PPQ5','Jitter:DDP','Shimmer','Shimmer(dB)','Shimmer:APQ3','Shimmer:APQ5','Shimmer:APQ11','Shimmer:DDA','NHR','HNR','DFA','PPE','status','age','time']
+    df = pd.DataFrame(columns = features)
+    df.to_csv(os.path.join(os.getcwd(),config['extracted_features_path']), index=False)
+    
+    for person,video_data in link_db.items():    
+        data = []
+        old_df = pd.read_csv(os.path.join(os.getcwd(),config['extracted_features_path']))
+        for index, video in enumerate(video_data):
+            paths = []
+            video_title = re.sub('[^A-Za-z0-9]+', '_', video['title'])
             if video['status'] == Status.AUDIOSPLIT_PASS:
-                video_title = re.sub('[^A-Za-z0-9]+', '_', video['title'])
                 allFiles = all_wav_files[video_title]
-                for file in allFiles:
-                    
+                paths.extend(allFiles)
+            data = extractFeatures(paths,data,index,video_title,video['date'],dob_db[person],diag_db[person])
+        new_df = pd.DataFrame(data,columns = features)
+        old_df = old_df.append(new_df, ignore_index = True)
+        old_df.to_csv(os.path.join(os.getcwd(),config['extracted_features_path']), index=False)
                     
     

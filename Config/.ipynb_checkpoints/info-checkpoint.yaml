@@ -1,4 +1,7 @@
 link_db_path: JSONDatabase/link_db.json
+dob_db_path: JSONDatabase/dob_db.json
+diagnosys_db_path: JSONDatabase/diagnosys.json
+extracted_features_path: features.csv
 mp4_dir: Data/mp4/
 wav_dir: Data/wav/
 gold_dir: Data/gold_wav

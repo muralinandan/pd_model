@@ -43,7 +43,7 @@ def cut_join(audio, times, video_title):
         audio_outs.append({'filename':chunk_name,'audio':chunk})
         
     return audio_outs
-        
+         
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--config', dest='config_file', type=str, help='Configuration file', required=True)
@@ -64,7 +64,6 @@ if __name__ == '__main__':
                 audio = AudioSegment.from_wav(video['wav_path'])
                 gold_times = video['timings']
                 try:
-                    print ("Starting FOR {}".format(video_title))
                     audios_outs = cut_join(audio,gold_times,video_title)
                     for audio in audios_outs:
                         chunk = audio['audio']
@@ -73,6 +72,8 @@ if __name__ == '__main__':
                     print ("DONE FOR {}".format(video_title))
                     video['status'] = Status.AUDIOSPLIT_PASS
                 except Exception as e:
+                    print ("AudioSplitting failed for - {}".format(video_title))
+                    print (e)
                     video['status'] = Status.AUDIOSPLIT_FAIL                
                     
         data[index] = video
